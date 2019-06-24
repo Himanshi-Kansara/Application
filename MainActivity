@@ -1,0 +1,118 @@
+package com.example.transactiondetails;
+
+import android.Manifest;
+import android.annotation.TargetApi;
+import android.content.ContentResolver;
+import android.content.pm.PackageManager;
+import android.database.Cursor;
+import android.net.Uri;
+import android.os.Build;
+import android.support.annotation.RequiresApi;
+import android.support.v4.content.ContextCompat;
+import android.support.v7.app.AppCompatActivity;
+import android.os.Bundle;
+import android.support.v7.widget.LinearLayoutManager;
+import android.support.v7.widget.RecyclerView;
+import android.util.Log;
+import android.widget.Toast;
+
+import java.util.ArrayList;
+
+public class MainActivity extends AppCompatActivity {
+
+    public ArrayList<MessageData> msgList = new ArrayList<>();
+    public ArrayList<MessageData> msgList2 = new ArrayList<>();
+    public MsgAdapter msgAdapter;
+    public RecyclerView recyclerView;
+    private static final int READ_SMS_PERMISSIONS_REQUEST = 1;
+
+
+    @RequiresApi(api = Build.VERSION_CODES.M)
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_SMS)
+                != PackageManager.PERMISSION_GRANTED) {
+            getPermissionToReadSMS();
+        } else {
+            refreshSmsInbox();
+        }
+
+        msgList2 = refreshSmsInbox();
+        recyclerView = findViewById(R.id.transactionDetails);
+        recyclerView.setAdapter(new MsgAdapter(getApplicationContext(), msgList));
+        recyclerView.setLayoutManager(new LinearLayoutManager(this));
+    }
+
+    public ArrayList<MessageData> refreshSmsInbox() {
+        ContentResolver contentResolver = getContentResolver();
+        Cursor smsInboxCursor = contentResolver.query(Uri.parse("content://sms/inbox"), null, null, null, null);
+        int indexBody = smsInboxCursor.getColumnIndex("body");
+        int indexAddress = smsInboxCursor.getColumnIndex("address");
+        if (indexBody < 0 || !smsInboxCursor.moveToFirst()) return msgList;
+        msgList.clear();
+        do {
+
+            String credit = "null", date = "null", amount = "null", debit = null;
+            String address = smsInboxCursor.getString(indexAddress);
+            if (address.equals("TXFROMSC")) {
+                String str[] = smsInboxCursor.getString(indexBody).split(" ");
+                for (int i = 0; i < str.length; i++) {
+                    switch (str[i]) {
+                        case "debited":
+                            debit = str[i + 3];
+                        case "credited":
+                            credit = str[i + 3];
+                            break;
+                        case "on":
+                            date = str[i + 1];
+                            break;
+                        case "Bal:":
+                            amount = str[i + 2];
+                            break;
+                    }
+                    Log.d("MSG", credit + amount + date);
+                }
+                msgList.add(new MessageData(debit, credit, date, amount));
+
+            }
+        } while (smsInboxCursor.moveToNext());
+        return msgList;
+    }
+
+
+
+    @RequiresApi(api = Build.VERSION_CODES.M)
+    public void getPermissionToReadSMS() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_SMS)
+                != PackageManager.PERMISSION_GRANTED) {
+            if (shouldShowRequestPermissionRationale(
+                    Manifest.permission.READ_SMS)) {
+                Toast.makeText(this, "Please allow permission!", Toast.LENGTH_SHORT).show();
+            }
+            requestPermissions(new String[]{Manifest.permission.READ_SMS},
+                    READ_SMS_PERMISSIONS_REQUEST);
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode,
+                                           String permissions[],
+                                         int[] grantResults) {
+        // Make sure it's our original READ_CONTACTS request
+        if (requestCode == READ_SMS_PERMISSIONS_REQUEST) {
+            if (grantResults.length == 1 &&
+                    grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                Toast.makeText(this, "Read SMS permission granted", Toast.LENGTH_SHORT).show();
+                refreshSmsInbox();
+            } else {
+                Toast.makeText(this, "Read SMS permission denied", Toast.LENGTH_SHORT).show();
+            }
+
+        } else {
+            super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        }
+    }
+}
